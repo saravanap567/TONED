@@ -1,18 +1,17 @@
 """
 OpenEnv Server for T1D Environment
-Meta PyTorch Hackathon - Round 1
+Compatible with original t1d_env.py (non-Pydantic version)
 
-This wraps the T1D environment in a FastAPI server
-to expose it via HTTP API for OpenEnv compliance.
+Meta PyTorch Hackathon - Round 1
 """
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import uvicorn
 
-from t1d_env import T1DEnv, TaskDifficulty, Action, Observation, Reward
+from t1d_env import T1DEnv, TaskDifficulty, Action, State
 
 # ============================================================================
 # FASTAPI APP
@@ -38,14 +37,15 @@ app.add_middleware(
 # ============================================================================
 
 env_instance: Optional[T1DEnv] = None
+current_state: Optional[State] = None
 
 # ============================================================================
-# REQUEST/RESPONSE MODELS
+# REQUEST/RESPONSE MODELS (Pydantic)
 # ============================================================================
 
 class ResetRequest(BaseModel):
     """Request model for reset endpoint"""
-    task: str = "easy"  # easy, medium, or hard
+    task: str = "easy"
 
 
 class ResetResponse(BaseModel):
@@ -56,7 +56,7 @@ class ResetResponse(BaseModel):
 
 class StepRequest(BaseModel):
     """Request model for step endpoint"""
-    action: Dict[str, float]  # {"insulin_bolus": 0.0}
+    action: Dict[str, float]
 
 
 class StepResponse(BaseModel):
@@ -65,6 +65,24 @@ class StepResponse(BaseModel):
     reward: float
     done: bool
     info: Dict[str, Any]
+
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+def state_to_dict(state: State) -> Dict[str, Any]:
+    """Convert State to dictionary"""
+    return {
+        "glucose": state.glucose,
+        "active_insulin": state.active_insulin,
+        "active_carbs": state.active_carbs,
+        "time_of_day": state.time_of_day,
+        "meal_announced": state.meal_announced,
+        "exercise_level": state.exercise_level,
+        "glucose_history": state.glucose_history,
+        "insulin_history": state.insulin_history
+    }
 
 
 # ============================================================================
@@ -78,16 +96,17 @@ def root():
         "name": "T1D Diabetes Environment Server",
         "version": "1.0.0",
         "hackathon": "Meta PyTorch Hackathon - Round 1",
+        "status": "running",
         "endpoints": {
-            "POST /reset": "Reset environment",
-            "POST /step": "Take action",
+            "POST /reset": "Reset environment with task parameter",
+            "POST /step": "Take action in environment",
             "GET /state": "Get current state",
-            "GET /info": "Get environment info"
+            "GET /info": "Get environment information"
         }
     }
 
 
-@app.post("/reset", response_model=ResetResponse)
+@app.post("/reset")
 def reset(request: ResetRequest):
     """
     Reset the environment
@@ -95,7 +114,7 @@ def reset(request: ResetRequest):
     POST /reset with {"task": "easy|medium|hard"}
     Returns initial observation
     """
-    global env_instance
+    global env_instance, current_state
     
     # Map task string to difficulty
     task_map = {
@@ -106,102 +125,85 @@ def reset(request: ResetRequest):
     
     task_difficulty = task_map.get(request.task, TaskDifficulty.EASY)
     
-    # Create new environment
-    env_instance = T1DEnv(task=task_difficulty)
+    try:
+        # Create new environment
+        env_instance = T1DEnv(task=task_difficulty)
+        
+        # Reset and get initial observation
+        current_state = env_instance.reset()
+        
+        # Convert state to dict
+        obs_dict = state_to_dict(current_state)
+        
+        return {
+            "observation": obs_dict,
+            "info": {
+                "task": request.task,
+                "episode_length": env_instance.episode_length,
+                "target_range": [70, 180]
+            }
+        }
     
-    # Reset and get initial observation
-    obs = env_instance.reset()
-    
-    # Convert observation to dict
-    obs_dict = {
-        "glucose": obs.glucose,
-        "active_insulin": obs.active_insulin,
-        "active_carbs": obs.active_carbs,
-        "time_of_day": obs.time_of_day,
-        "meal_announced": obs.meal_announced,
-        "exercise_level": obs.exercise_level,
-        "glucose_history": obs.glucose_history,
-        "insulin_history": obs.insulin_history
-    }
-    
-    return ResetResponse(
-        observation=obs_dict,
-        info={"task": request.task, "episode_length": env_instance.episode_length}
-    )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Reset failed: {str(e)}")
 
 
-@app.post("/step", response_model=StepResponse)
+@app.post("/step")
 def step(request: StepRequest):
     """
     Take a step in the environment
     
-    POST /step with {"action": {"insulin_bolus": 0.5}}
+    POST /step with {"action": {"insulin_bolus": 2.5}}
     Returns (observation, reward, done, info)
     """
-    global env_instance
+    global env_instance, current_state
     
     if env_instance is None:
-        raise HTTPException(status_code=400, detail="Environment not initialized. Call /reset first.")
+        raise HTTPException(
+            status_code=400,
+            detail="Environment not initialized. Call /reset first."
+        )
     
-    # Parse action
     try:
-        action = Action(insulin_bolus=request.action.get("insulin_bolus", 0.0))
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid action: {e}")
-    
-    # Step environment
-    try:
-        obs, reward, done, info = env_instance.step(action)
+        # Parse action
+        insulin_bolus = request.action.get("insulin_bolus", 0.0)
+        action = Action(insulin_bolus=insulin_bolus)
         
-        # Convert to dict
-        obs_dict = {
-            "glucose": obs.glucose,
-            "active_insulin": obs.active_insulin,
-            "active_carbs": obs.active_carbs,
-            "time_of_day": obs.time_of_day,
-            "meal_announced": obs.meal_announced,
-            "exercise_level": obs.exercise_level,
-            "glucose_history": obs.glucose_history,
-            "insulin_history": obs.insulin_history
-        }
+        # Step environment
+        current_state, reward, done, info = env_instance.step(action)
         
-        # Get reward value (handle both Reward object and float)
-        if isinstance(reward, Reward):
+        # Convert state to dict
+        obs_dict = state_to_dict(current_state)
+        
+        # Handle reward (could be float or Reward object)
+        if hasattr(reward, 'total'):
             reward_value = reward.total
         else:
             reward_value = float(reward)
         
-        return StepResponse(
-            observation=obs_dict,
-            reward=reward_value,
-            done=done,
-            info=info
-        )
+        return {
+            "observation": obs_dict,
+            "reward": reward_value,
+            "done": done,
+            "info": info
+        }
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Step failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Step failed: {str(e)}")
 
 
 @app.get("/state")
 def get_state():
     """Get current environment state"""
-    global env_instance
+    global env_instance, current_state
     
-    if env_instance is None:
-        raise HTTPException(status_code=400, detail="Environment not initialized. Call /reset first.")
+    if env_instance is None or current_state is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Environment not initialized. Call /reset first."
+        )
     
-    obs = env_instance.state()
-    
-    return {
-        "glucose": obs.glucose,
-        "active_insulin": obs.active_insulin,
-        "active_carbs": obs.active_carbs,
-        "time_of_day": obs.time_of_day,
-        "meal_announced": obs.meal_announced,
-        "exercise_level": obs.exercise_level,
-        "glucose_history": obs.glucose_history,
-        "insulin_history": obs.insulin_history
-    }
+    return {"state": state_to_dict(current_state)}
 
 
 @app.get("/info")
@@ -224,11 +226,20 @@ def get_info():
     }
 
 
+@app.get("/health")
+def health():
+    """Health check endpoint"""
+    return {"status": "healthy", "service": "t1d-env-server"}
+
+
 # ============================================================================
 # MAIN
 # ============================================================================
 
 if __name__ == "__main__":
+    print("Starting T1D Environment Server...")
+    print("OpenEnv API endpoints: /reset, /step, /state, /info")
+    
     uvicorn.run(
         app,
         host="0.0.0.0",
