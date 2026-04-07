@@ -1,0 +1,223 @@
+# OpenEnv Configuration for Type 1 Diabetes Management Environment
+# Version: 1.0.0
+
+name: "t1d-insulin-management"
+version: "1.0.0"
+description: "Type 1 Diabetes blood glucose management through insulin dosing decisions"
+
+environment:
+  class: "T1DEnv"
+  module: "t1d_env"
+  
+observation_space:
+  type: "dict"
+  spaces:
+    glucose:
+      type: "continuous"
+      shape: [1]
+      low: 40.0
+      high: 400.0
+      unit: "mg/dL"
+      description: "Current blood glucose level"
+    
+    active_insulin:
+      type: "continuous"
+      shape: [1]
+      low: 0.0
+      high: 50.0
+      unit: "units"
+      description: "Insulin on board (active in system)"
+    
+    active_carbs:
+      type: "continuous"
+      shape: [1]
+      low: 0.0
+      high: 200.0
+      unit: "grams"
+      description: "Carbohydrates being absorbed"
+    
+    time_of_day:
+      type: "continuous"
+      shape: [1]
+      low: 0.0
+      high: 24.0
+      unit: "hours"
+      description: "Current time of day (0-24)"
+    
+    meal_announced:
+      type: "continuous"
+      shape: [1]
+      low: 0.0
+      high: 150.0
+      unit: "grams"
+      description: "Upcoming meal carbohydrate content (0 if none)"
+    
+    exercise_level:
+      type: "continuous"
+      shape: [1]
+      low: 0.0
+      high: 1.0
+      unit: "intensity"
+      description: "Exercise intensity (0=none, 1=maximum)"
+    
+    glucose_history:
+      type: "continuous"
+      shape: [12]
+      low: 40.0
+      high: 400.0
+      unit: "mg/dL"
+      description: "Last 12 glucose readings (1 hour history at 5-min intervals)"
+    
+    insulin_history:
+      type: "continuous"
+      shape: [12]
+      low: 0.0
+      high: 20.0
+      unit: "units"
+      description: "Last 12 insulin doses"
+
+action_space:
+  type: "dict"
+  spaces:
+    insulin_bolus:
+      type: "continuous"
+      shape: [1]
+      low: 0.0
+      high: 20.0
+      unit: "units"
+      description: "Bolus insulin dose to deliver"
+
+tasks:
+  - id: "easy"
+    name: "Fasting Glucose Control"
+    description: "Maintain stable blood glucose overnight with no meals (8 hours)"
+    difficulty: "easy"
+    episode_length: 96  # 8 hours at 5-min timesteps
+    success_criteria:
+      - metric: "time_in_range"
+        threshold: 0.80
+        description: "80% time in target range (70-180 mg/dL)"
+      - metric: "severe_hypo_events"
+        threshold: 0
+        description: "Zero severe hypoglycemia events (<54 mg/dL)"
+    pass_threshold: 0.70
+    
+  - id: "medium"
+    name: "Single Meal Management"
+    description: "Handle one meal with appropriate bolus insulin (6 hours)"
+    difficulty: "medium"
+    episode_length: 72  # 6 hours
+    success_criteria:
+      - metric: "time_in_range"
+        threshold: 0.70
+        description: "70% time in target range"
+      - metric: "glucose_recovery"
+        threshold: 20.0
+        description: "Return to baseline ±20 mg/dL"
+      - metric: "severe_hypo_events"
+        threshold: 0
+        description: "Zero severe hypoglycemia events"
+    pass_threshold: 0.60
+    
+  - id: "hard"
+    name: "Full Day Management"
+    description: "Manage 3 meals + exercise over 24 hours"
+    difficulty: "hard"
+    episode_length: 288  # 24 hours
+    success_criteria:
+      - metric: "time_in_range"
+        threshold: 0.70
+        description: "70% time in target range"
+      - metric: "time_below_range"
+        threshold: 0.05
+        description: "<5% time in hypoglycemia"
+      - metric: "severe_hypo_events"
+        threshold: 0
+        description: "Zero severe hypoglycemia events"
+    pass_threshold: 0.65
+
+reward:
+  type: "continuous"
+  range: [-12.0, 1.0]
+  description: "Composite reward: time in range (primary), safety penalties, variability penalties"
+  components:
+    - name: "time_in_range_reward"
+      weight: 1.0
+      description: "Positive reward for glucose in 70-180 mg/dL"
+    - name: "hypoglycemia_penalty"
+      weight: -2.0
+      description: "Strong penalty for glucose <70 mg/dL"
+    - name: "severe_hypo_penalty"
+      weight: -10.0
+      description: "Critical penalty for glucose <54 mg/dL"
+    - name: "variability_penalty"
+      weight: -0.1
+      description: "Small penalty for large glucose swings"
+    - name: "insulin_economy"
+      weight: -0.01
+      description: "Discourage excessive insulin dosing"
+
+timestep:
+  duration: 5.0
+  unit: "minutes"
+  description: "Each step represents 5 minutes of real time"
+
+grading:
+  class: "T1DGrader"
+  module: "grading"
+  num_episodes: 5
+  metrics:
+    - name: "time_in_range"
+      description: "Percentage of time with glucose 70-180 mg/dL"
+      target: 0.70
+    - name: "time_above_range"
+      description: "Percentage of time with glucose >180 mg/dL"
+    - name: "time_below_range"
+      description: "Percentage of time with glucose <70 mg/dL"
+      target: 0.05
+    - name: "mean_glucose"
+      description: "Mean blood glucose level"
+      unit: "mg/dL"
+      target: 120.0
+    - name: "cv_glucose"
+      description: "Coefficient of variation (glucose stability)"
+      unit: "percent"
+      target: 36.0
+    - name: "severe_hypo_events"
+      description: "Number of severe hypoglycemia events"
+      target: 0
+
+metadata:
+  domain: "healthcare"
+  subdomain: "diabetes_management"
+  real_world: true
+  safety_critical: true
+  clinical_relevance: "high"
+  
+  references:
+    - title: "Reinforcement Learning for Blood Glucose Control"
+      authors: "Fox et al."
+      year: 2020
+      url: "https://doi.org/10.2337/dc20-0842"
+    - title: "International Consensus on Time in Range"
+      authors: "Battelino et al."
+      year: 2019
+      url: "https://doi.org/10.2337/dci19-0028"
+    - title: "UVA/Padova Type 1 Diabetes Simulator"
+      authors: "Dalla Man et al."
+      year: 2014
+      url: "https://doi.org/10.1177/1932296814526495"
+  
+  author:
+    name: "saravana kumar Papanaidu"
+    email: "saravana.p@567@gmail.com"
+    
+  license: "MIT"
+  
+  tags:
+    - "healthcare"
+    - "diabetes"
+    - "continuous-control"
+    - "safety-critical"
+    - "time-series"
+    - "medical-ai"
