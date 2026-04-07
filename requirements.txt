@@ -1,27 +1,26 @@
 # Requirements for T1D Environment - Meta PyTorch Hackathon
-# OpenEnv-compliant with Pydantic models
+# OpenEnv Server with FastAPI
 
 # Core dependencies
 numpy>=1.24.0
 pyyaml>=6.0
 
 # OpenEnv requirements
-pydantic>=2.0.0  # Required for typed models
+pydantic>=2.0.0
 
 # OpenAI SDK (required by hackathon)
 openai>=1.0.0
 
+# FastAPI server (for OpenEnv API endpoints)
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+
 # Visualization
 matplotlib>=3.7.0
-seaborn>=0.12.0
 pillow>=10.0.0
 
-# Web interface
+# Web interface (optional demo)
 gradio>=4.0.0
 
-# Testing (optional)
+# Testing
 pytest>=7.4.0
-
-# Utilities
-tqdm>=4.65.0
-pandas>=2.0.0
