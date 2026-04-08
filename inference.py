@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Body
+from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 import numpy as np
@@ -155,19 +155,22 @@ def root():
 
 
 @app.post("/reset", response_model=ResetResponse)
-def reset(config: Optional[ResetConfig] = Body(None)):
+async def reset(request: Request):
     """
     Reset the environment to initial state.
-    
+
     This endpoint accepts an OPTIONAL body with seed and options.
     If no body is provided, it uses default values.
     """
     seed = None
-    if config is not None and config.seed is not None:
-        seed = config.seed
-    
+    body = await request.body()
+    if body:
+        config = ResetConfig.model_validate_json(body)
+        if config.seed is not None:
+            seed = config.seed
+
     obs, info = env.reset(seed=seed)
-    
+
     return ResetResponse(
         observation=obs,
         info=info
