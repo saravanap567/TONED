@@ -1,0 +1,29 @@
+[project]
+name = "t1d-insulin-management"
+version = "1.0.0"
+description = "Type 1 Diabetes blood glucose management through insulin dosing decisions"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "saravana kumar Papanaidu", email = "saravana.p@567@gmail.com" }
+]
+
+dependencies = [
+    "numpy>=1.24.0",
+    "pyyaml>=6.0",
+    "pydantic>=2.0.0",
+    "openai>=1.0.0",
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "matplotlib>=3.7.0",
+    "pillow>=10.0.0",
+    "gradio>=4.0.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7.4.0"]
+
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
