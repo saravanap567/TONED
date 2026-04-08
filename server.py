@@ -5,7 +5,7 @@ Compatible with original t1d_env.py (non-Pydantic version)
 Meta PyTorch Hackathon - Round 1
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
@@ -107,23 +107,33 @@ def root():
 
 
 @app.post("/reset")
-def reset(request: ResetRequest):
+async def reset(request: Request):
     """
     Reset the environment
-    
-    POST /reset with {"task": "easy|medium|hard"}
+
+    POST /reset with optional {"task": "easy|medium|hard"}
     Returns initial observation
     """
     global env_instance, current_state
-    
+
+    # Parse optional body
+    task_str = "easy"
+    body = await request.body()
+    if body:
+        try:
+            data = ResetRequest.model_validate_json(body)
+            task_str = data.task
+        except Exception:
+            pass
+
     # Map task string to difficulty
     task_map = {
         "easy": TaskDifficulty.EASY,
         "medium": TaskDifficulty.MEDIUM,
         "hard": TaskDifficulty.HARD
     }
-    
-    task_difficulty = task_map.get(request.task, TaskDifficulty.EASY)
+
+    task_difficulty = task_map.get(task_str, TaskDifficulty.EASY)
     
     try:
         # Create new environment
@@ -138,7 +148,7 @@ def reset(request: ResetRequest):
         return {
             "observation": obs_dict,
             "info": {
-                "task": request.task,
+                "task": task_str,
                 "episode_length": env_instance.episode_length,
                 "target_range": [70, 180]
             }
