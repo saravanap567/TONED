@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Body
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 import numpy as np
@@ -155,7 +155,7 @@ def root():
 
 
 @app.post("/reset", response_model=ResetResponse)
-def reset(config: Optional[ResetConfig] = None):
+def reset(config: Optional[ResetConfig] = Body(None)):
     """
     Reset the environment to initial state.
     
