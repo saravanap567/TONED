@@ -19,7 +19,11 @@ dependencies = [
     "matplotlib>=3.7.0",
     "pillow>=10.0.0",
     "gradio>=4.0.0",
+    "openenv-core>=0.2.0",
 ]
+
+[project.scripts]
+server = "server.app:main"
 
 [project.optional-dependencies]
 test = ["pytest>=7.4.0"]
