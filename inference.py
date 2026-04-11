@@ -2,17 +2,6 @@
 OpenEnv Inference Agent for T1D Environment
 Meta PyTorch Hackathon - Round 1
 
-Submission Guidelines Compliance:
-  1. inference.py in project root                                    [YES]
-  2. Uses OpenAI Client (AsyncOpenAI) for all LLM calls              [YES]
-  3. Reads API_BASE_URL (default), MODEL_NAME (default), HF_TOKEN    [YES]
-  4. Emits [START], [STEP], [END] to stdout in required format       [YES]
-
-Performance Compliance (must complete < 30 min):
-  A. Timeouts on every LLM call (asyncio.wait_for hard cap)         [YES]
-  B. Reduced LLM calls via batching (every N steps, not every step) [YES]
-  C. Async / non-blocking I/O throughout (AsyncOpenAI + httpx)      [YES]
-  D. Server /step latency monitoring with warnings                  [YES]
 """
 
 import os
