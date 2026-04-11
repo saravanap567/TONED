@@ -21,7 +21,7 @@ from openai import AsyncOpenAI
 
 API_BASE_URL = os.environ.get("API_BASE_URL", "https://api.openai.com/v1")
 MODEL_NAME = os.environ.get("MODEL_NAME", "gpt-4o-mini")
-HF_TOKEN = os.environ.get("HF_TOKEN", "")
+HF_TOKEN = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
 
 # ---------------------------------------------------------------------------
 # Timeout & performance config
@@ -48,7 +48,7 @@ log = logging.getLogger("inference")
 # ---------------------------------------------------------------------------
 
 llm_client = AsyncOpenAI(
-    api_key=HF_TOKEN or "no-key",
+    api_key=HF_TOKEN or os.getenv("OPENAI_API_KEY") or "no-key",
     base_url=API_BASE_URL,
     timeout=LLM_TIMEOUT,
     max_retries=0,  # Fail fast — algorithmic fallback is instant
@@ -263,6 +263,7 @@ async def run_episode(
 
     rewards: List[float] = []
     steps = 0
+    score = 0.0
     success = False
     done = False
     step_info: Dict[str, Any] = {}
@@ -336,12 +337,12 @@ async def run_episode(
             time_budget_ok = step_elapsed < STEP_TIME_BUDGET
 
             if done:
-                tir = step_info.get("time_in_range", 0)
-                success = tir >= 0.60
                 break
 
-        if not done:
-            success = False
+        # Compute normalized score in [0, 1] from time_in_range
+        tir = step_info.get("time_in_range", 0) if step_info else 0
+        score = min(max(float(tir), 0.0), 1.0)
+        success = score >= 0.60
 
     except Exception as exc:
         log.error("Episode error for task=%s: %s", task, exc)
@@ -351,6 +352,7 @@ async def run_episode(
     print(
         f"[END] success={'true' if success else 'false'}"
         f" steps={steps}"
+        f" score={score:.3f}"
         f" rewards={rewards_str}",
         flush=True,
     )
@@ -358,6 +360,7 @@ async def run_episode(
     return {
         "task": task,
         "steps": steps,
+        "score": score,
         "success": success,
         "total_reward": sum(rewards),
     }
@@ -397,8 +400,8 @@ async def main():
     log.info("Inference complete in %.1f seconds", elapsed)
     for r in results:
         log.info(
-            "  Task=%-8s Steps=%-4d Success=%-5s Reward=%.2f",
-            r["task"], r["steps"], str(r["success"]), r["total_reward"],
+            "  Task=%-8s Steps=%-4d Score=%.3f Success=%-5s Reward=%.2f",
+            r["task"], r["steps"], r["score"], str(r["success"]), r["total_reward"],
         )
 
 
